@@ -1,52 +1,61 @@
 const express = require('express')
 const morgan = require('morgan')
 const bodyParser = require('body-parser')
-const person_routes = require('./routes/person_routes')
+const person_routes = require('./routes/person.routes')
+const auth_routes = require('./routes/authentication.routes')
+// const List = require('./model/List')
+const AuthController = require('./controllers/authentication.controller')
+const ApiError = require('./model/ApiError')
+const settings = require('./config/config')
 
+//Verkrijg de poort van de omgevingsvariabele (Heroku ondersteund dit), anders van de Config file
+const port = process.env.PORT || settings.webPort
+
+//Express laden
 let app = express()
 
-// bodyParser zorgt dat we de body uit een request kunnen gebruiken,
-app.use(bodyParser.json());
+// bodyParser parses the body from a request
+app.use(bodyParser.json())
 
-// Installeer Morgan als logger
-app.use(morgan('dev'));
+// Instal Morgan as logger
+app.use(morgan('dev'))
 
+// Preprocessing catch-all endpoint
+// The perfect place to check that the user performing the request 
+// has authorisation to do things on our server
 app.use('*', function(req, res, next){
 	next()
 })
 
+// Unprotected routes - no token required.
+// Provides login and registration 
+app.use('/api', auth_routes)
+
+// On all other routes, check for API key
+// app.all('*', (req, res, next) => { });
+app.all('*', AuthController.validateToken);
+
+// Regular endpoints
 app.use('/api', person_routes)
 
-app.get('/api/greeting', function (req, res, next) {
-	let mygreeting = {
-		text: "Hello all!",
-		author: "Robin Schellius"
-	}
-	res.send(mygreeting)
-})
-
-// Wanneer we hier komen bestond de gevraagde endpoint niet
+// Postprocessing; catch all non-existing endpoint requests
 app.use('*', function (req, res, next) {
-	console.log('De endpoint die je zocht bestaat niet')
-	let message = {
-		error: "Deze enpoint bestaat niet"
-	}
-	next(message)
+	// console.log('Non-existing endpoint')
+	const error = new ApiError("Deze endpoint bestaat niet", 404)
+	next(error)
 })
 
-// catch-all error handler volgens Express documentatie
-// http://expressjs.com/en/guide/error-handling.html
+// Catch-all error handler according to Express documentation - err should always be an ApiError! 
+// See also http://expressjs.com/en/guide/error-handling.html
 app.use((err, req, res, next) => {
-	console.log('Catch-all error handler was called.')
-	console.log(err)
-
-	res.status(404).json(err).end()	
+	// console.dir(err)
+	res.status((err.code || 404)).json(err).end()	
 })
 
-const port = process.env.PORT || 3000;
-
+// Start listening for incoming requests.
 app.listen(port, () => {
-	console.log('De server draait op port ' + port)
+	console.log('Server running on port ' + port)
 })
 
+// Testcases need our app - export it.
 module.exports = app
